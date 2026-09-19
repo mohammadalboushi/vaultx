@@ -128,7 +128,10 @@
           // إضافة شبكات حماية للمصفوفات القادمة من السحابة أيضاً
                               cloudData.projects.forEach(p => {
                       p.accounts = p.accounts || [];
-                      p.accounts.forEach(acc => { acc.fields = acc.fields || []; });
+                      p.accounts.forEach(acc => {
+                        acc.fields = acc.fields || [];
+                        acc.fields.forEach(f => f._revealed = false);
+                      });
                     });
                     const currentActive = state.activeProjectId;
                     const currentUI = state.ui;
@@ -409,10 +412,11 @@
         const el = document.createElement('div'); el.className = 'acc-card';
                 const fCount = (acc.fields || []).length;
         const shortName = acc.name.length > 35 ? acc.name.slice(0, 35) + '...' : acc.name;
+        const dateStr = new Date(acc.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
         el.innerHTML = `
         <div class="acc-info">
           <div class="acc-ic">${ICON.folder}</div>
-          <div class="acc-text"><h3 dir="auto">${escapeHTML(shortName)}</h3><p>${fCount} بطاقة بيانات ${state.activeProjectId === 'all' ? `<span class="badge-proj">${escapeHTML(proj.name)}</span>` : ''}</p></div>
+          <div class="acc-text"><h3 dir="auto">${escapeHTML(shortName)}</h3><p>${fCount} بطاقة بيانات • <span style="font-family:var(--font-mono); font-size:10.5px;">${dateStr}</span> ${state.activeProjectId === 'all' ? `<span class="badge-proj">${escapeHTML(proj.name)}</span>` : ''}</p></div>
         </div>
         <div class="acc-arrow">${ICON.chevronL}</div>`;
         el.addEventListener('click', () => navigateToAccount(proj.id, acc.id));
@@ -447,7 +451,8 @@
       const valWrap = document.createElement('div'); valWrap.className = 'card-value' + (field.sensitive ? '' : ' plain');
       valWrap.textContent = (field.sensitive && !field._revealed) ? maskValue(field.value) : (field.value || '—');
 
-      el.innerHTML = `<div class="card-top"><div class="card-label"><span class="tag-dot"></span>${escapeHTML(field.label)}</div><button class="card-more" data-more aria-label="خيارات">${ICON.edit.replace('<svg','<svg style="width:15px;height:15px"')}</button></div>`;
+      const dateStr = new Date(field.updatedAt || field.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+      el.innerHTML = `<div class="card-top"><div class="card-label"><span class="tag-dot"></span>${escapeHTML(field.label)}</div><div style="display:flex; align-items:center; gap:8px;"><span style="font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono);">${dateStr}</span><button class="card-more" data-more aria-label="خيارات">${ICON.edit.replace('<svg','<svg style="width:15px;height:15px"')}</button></div></div>`;
       el.querySelector('.card-top').insertAdjacentElement('afterend', valWrap);
 
       const actions = document.createElement('div'); actions.className = 'card-actions';

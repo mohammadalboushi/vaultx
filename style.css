@@ -620,6 +620,7 @@ select {
   direction: ltr;
   text-align: left;
   unicode-bidi: plaintext;
+  white-space: pre-wrap;
 }
 
 .card-value.plain {
