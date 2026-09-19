@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="description" content="تطبيق خزائني: منصتك الآمنة لإدارة بياناتك ومشاريعك وحفظ كلمات المرور بشكل محلي وسحابي.">
+    <meta name="keywords" content="خزنة, كلمات مرور, إدارة بيانات, مشاريع, أمان, تشفير, خزائني, تطبيق ويب">
+    <meta name="author" content="itsalboushi">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#000000">
+    <link rel="canonical" href="https://yourdomain.com/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://yourdomain.com/">
+    <meta property="og:title" content="خزائني — إدارة المشاريع والبيانات">
+    <meta property="og:description" content="خزنة آمنة لإدارة بياناتك ومشاريعك وحفظ كلمات المرور بسهولة.">
+    <meta property="og:image" content="icon-512.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:locale" content="ar_AR">
+    <meta property="og:site_name" content="خزائني — إدارة المشاريع والبيانات">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="خزائني — إدارة المشاريع والبيانات">
+    <meta name="twitter:description" content="خزنة آمنة لإدارة بياناتك ومشاريعك وحفظ كلمات المرور بسهولة.">
+    <meta name="twitter:image" content="icon-512.png">
+
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+    <title>VaultX — إدارة المشاريع والبيانات</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&amp;family=Almarai:wght@400;700;800&amp;family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+      <header class="topbar" id="topbar">
+        <button class="btn-back" id="btnBack" aria-label="رجوع">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"></path>
+          </svg>
+        </button>
+        <div class="brand">
+          <div class="brand-mark" id="brandMark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#C9A15C" stroke-width="1.8">
+              <path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"></path>
+              <circle cx="12" cy="11" r="2.1" fill="#C9A15C" stroke="none"></circle>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1 id="topTitle">VaultX</h1>
+            <p id="topSubtitle">إدارة المشاريع والبيانات</p>
+          </div>
+        </div>
+        <button class="icon-btn" id="optionsBtn" aria-label="خيارات">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="5" r="1.2" fill="currentColor" stroke="none"></circle>
+            <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"></circle>
+            <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </button>
+      </header>
+
+      <div class="search-wrap" id="searchWrap">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="M21 21l-4.35-4.35"></path>
+          </svg>
+          <input type="text" id="searchInput" placeholder="ابحث عن مشروع، حساب، أو بيانات..." autocomplete="off">
+          <button class="search-clear" id="searchClear" aria-label="مسح البحث">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round">
+              <path d="M18 6L6 18M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="tabs-wrap" id="tabsWrap">
+        <div class="tabs" id="tabs"></div>
+      </div>
+
+      <main class="content" id="content"></main>
+
+      <button class="fab" id="fabAdd" aria-label="إضافة">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div id="overlayRoot"></div>
+    <div class="toast-stack" id="toastStack"></div>
+    <input type="file" id="importInput" class="hidden-file-input" accept="application/json,.json">
+
+    <!-- Firebase SDK (V8 Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="script.js"></script>
+    <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').then(r=>console.log('SW registered:',r.scope)).catch(e=>console.error('SW registration failed:',e));});}</script>
+</body>
+</html>
