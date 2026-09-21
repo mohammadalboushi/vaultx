@@ -54,9 +54,15 @@
     },
     async save(data) {
       try {
-        localStorage.setItem(getDBKey(), JSON.stringify(data));
+        // بناء كائن جديد يحتوي فقط على البيانات الحقيقية وتجاهل حالة الواجهة والبحث
+        const dataToSave = { 
+          version: data.version, 
+          projects: data.projects, 
+          activeProjectId: data.activeProjectId 
+        };
+        localStorage.setItem(getDBKey(), JSON.stringify(dataToSave));
         if (currentUser) {
-          db.ref(`vaultData/${currentUser.uid}`).set(data).catch(e => console.error("Sync Error", e));
+          db.ref(`vaultData/${currentUser.uid}`).set(dataToSave).catch(e => console.error("Sync Error", e));
         }
         return true;
       } catch (e) {
@@ -103,6 +109,9 @@
           }
         });
         state = Object.assign(defaultState(), data);
+        // إجبار التطبيق على العودة للرئيسية وتفريغ البحث دائماً عند التحميل من السحابة/التخزين
+        state.ui = { mode: 'home', viewedProject: null, viewedAccount: null };
+        state.searchQuery = '';
       } else {
         state = defaultState();
       }
@@ -719,8 +728,6 @@
 
   (async function init() {
     await loadState();
-    state.activeProjectId = 'all';
-    state.ui = { mode: 'home', viewedProject: null, viewedAccount: null };
     if (!history.state) history.replaceState({ root: true }, '');
     renderAll();
   })();
