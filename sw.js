@@ -1,5 +1,5 @@
 // Service Worker — Professional PWA Architecture
-const CACHE_NAME = 'vault-cache-v3';
+const CACHE_NAME = 'vault-cache-v4';
 const ASSETS = [
   './',
   './index.html',

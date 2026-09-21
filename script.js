@@ -37,12 +37,15 @@
     google: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>'
   };
 
-  const DB_KEY = 'vault_manager_db_v2';
+  function getDBKey() {
+    return currentUser ? `vault_manager_db_v2_${currentUser.uid}` : 'vault_manager_db_v2_guest';
+  }
   
   const Adapter = {
     async load() {
       try {
-        let raw = localStorage.getItem(DB_KEY);
+        let raw = localStorage.getItem(getDBKey());
+        if (!raw) raw = localStorage.getItem('vault_manager_db_v2'); // لتجنب ضياع البيانات القديمة
         if (!raw) raw = localStorage.getItem('vault_manager_db_v1');
         return raw ? JSON.parse(raw) : null;
       } catch (e) {
@@ -51,7 +54,7 @@
     },
     async save(data) {
       try {
-        localStorage.setItem(DB_KEY, JSON.stringify(data));
+        localStorage.setItem(getDBKey(), JSON.stringify(data));
         if (currentUser) {
           db.ref(`vaultData/${currentUser.uid}`).set(data).catch(e => console.error("Sync Error", e));
         }
@@ -121,6 +124,10 @@
     if (optBtn) optBtn.classList.toggle('online', !!user);
     
     if (user) {
+      // إعادة تحميل البيانات المحلية الخاصة بهذا الحساب فور تسجيل الدخول (للعمل بسلاسة وبدون إنترنت)
+      await loadState();
+      renderAll();
+
       try {
         const snap = await db.ref(`vaultData/${user.uid}`).once('value');
         const cloudData = snap.val();
@@ -138,7 +145,7 @@
                     state = Object.assign(defaultState(), cloudData);
                     state.activeProjectId = currentActive;
                     state.ui = currentUI;
-                    localStorage.setItem(DB_KEY, JSON.stringify(state)); 
+                    localStorage.setItem(getDBKey(), JSON.stringify(state)); 
                     renderAll();
                   } else {
           if (state.projects.length > 0) {
@@ -448,7 +455,8 @@
     const grid = document.createElement('div'); grid.className = 'cards-grid';
     (acc.fields || []).forEach(field => {
       const el = document.createElement('div'); el.className = 'card';
-      const valWrap = document.createElement('div'); valWrap.className = 'card-value' + (field.sensitive ? '' : ' plain');
+      const valWrap = document.createElement('div'); valWrap.className = 'card-value notranslate' + (field.sensitive ? '' : ' plain');
+      valWrap.setAttribute('translate', 'no');
       valWrap.textContent = (field.sensitive && !field._revealed) ? maskValue(field.value) : (field.value || '—');
 
       const dateStr = new Date(field.updatedAt || field.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -591,7 +599,7 @@
   function openAccountContextMenu(proj, acc, x, y) { openContextMenu(x, y, [{ act: 'edit', label: 'تعديل', icon: ICON.edit, run: () => openEditAccountSheet(proj, acc) }, { sep: true }, { act: 'delete', label: 'حذف', icon: ICON.trash, danger: true, run: () => confirmDeleteAccount(proj, acc) }]); }
 
   function fieldFormHTML(ext) {
-    return `<div class="field"><label>اسم البيانات</label><input type="text" id="fLabel" placeholder="مثال: API Key" value="${ext ? escapeHTML(ext.label) : ''}" maxlength="60" autocomplete="off"></div><div class="field"><label>القيمة</label><textarea id="fValue" placeholder="القيمة الكاملة...">${ext ? escapeHTML(ext.value) : ''}</textarea></div><div class="switch-row"><div class="label-block"><strong>بيانات حساسة</strong><span>إخفاء القيمة تلقائيًا خلف نقاط</span></div><div class="switch ${(!ext || ext.sensitive) ? 'on' : ''}" id="fSens"><div class="knob"></div></div></div><div class="sheet-actions"><button class="btn btn-ghost" data-cancel>إلغاء</button><button class="btn btn-accent" id="fSave" ${ext ? '' : 'disabled'}>${ext ? 'حفظ' : 'إضافة'}</button></div>`;
+    return `<div class="field"><label>اسم البيانات</label><input type="text" id="fLabel" placeholder="مثال: API Key" value="${ext ? escapeHTML(ext.label) : ''}" maxlength="60" autocomplete="off" spellcheck="false" autocorrect="off" dir="auto"></div><div class="field"><label>القيمة</label><textarea id="fValue" placeholder="القيمة الكاملة..." spellcheck="false" autocorrect="off" autocapitalize="off" translate="no" class="notranslate" dir="auto">${ext ? escapeHTML(ext.value) : ''}</textarea></div><div class="switch-row"><div class="label-block"><strong>بيانات حساسة</strong><span>إخفاء القيمة تلقائيًا خلف نقاط</span></div><div class="switch ${(!ext || ext.sensitive) ? 'on' : ''}" id="fSens"><div class="knob"></div></div></div><div class="sheet-actions"><button class="btn btn-ghost" data-cancel>إلغاء</button><button class="btn btn-accent" id="fSave" ${ext ? '' : 'disabled'}>${ext ? 'حفظ' : 'إضافة'}</button></div>`;
   }
   function wireFieldForm(sheet, close, proj, acc, ext) {
     const lInp = sheet.querySelector('#fLabel'), vInp = sheet.querySelector('#fValue'), sw = sheet.querySelector('#fSens'), save = sheet.querySelector('#fSave');
@@ -659,8 +667,10 @@
         
         sheet.querySelector('[data-act="logout"]')?.addEventListener('click', () => {
           close();
+          const currentKey = getDBKey();
           auth.signOut().then(() => {
-            localStorage.removeItem(DB_KEY);
+            localStorage.removeItem(currentKey);
+            localStorage.removeItem('vault_manager_db_v2');
             localStorage.removeItem('vault_manager_db_v1');
             state = defaultState();
             persist();
