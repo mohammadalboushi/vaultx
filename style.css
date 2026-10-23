@@ -497,11 +497,17 @@ select {
   font-weight: 700;
   color: var(--text);
   margin-bottom: 3px;
-  white-space: nowrap;
+  
+  /* الخصائص الذكية لعرض النص */
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  direction: ltr;
-  text-align: right
+  word-break: break-all; /* لكسر الكلمات الطويلة كالإيميلات بدون مسافات */
+
+  /* المحاذاة التلقائية الذكية بناءً على اتجاه النص (عربي يمين/إنجليزي يسار) */
+  unicode-bidi: plaintext;
+  text-align: match-parent; 
 }
 
 .acc-text p {

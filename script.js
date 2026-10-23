@@ -81,7 +81,7 @@
     projects: [],
     activeProjectId: 'all',
     searchQuery: '',
-    ui: { mode: 'home', viewedProject: null, viewedAccount: null }
+    ui: { mode: 'home', viewedProject: null, viewedAccount: null, viewedSubfolder: null }
   };
 
   function defaultState() {
@@ -92,25 +92,28 @@
     try {
       const data = await Adapter.load();
       if (data && Array.isArray(data.projects)) {
-        // إضافة شبكات حماية لحل مشكلة حذف Firebase للمصفوفات الفارغة
         data.projects.forEach(p => {
           p.accounts = p.accounts || []; 
           if (p.cards && p.accounts.length === 0) {
             p.accounts = [{
               id: uid(), name: 'حسابات عامة', createdAt: p.createdAt || Date.now(),
-              fields: (p.cards || []).map(c => ({ ...c, _revealed: false }))
+              fields: (p.cards || []).map(c => ({ ...c, _revealed: false })), subfolders: []
             }];
             delete p.cards;
           } else {
             p.accounts.forEach(acc => {
               acc.fields = acc.fields || []; 
+              acc.subfolders = acc.subfolders || [];
               acc.fields.forEach(f => f._revealed = false);
+              acc.subfolders.forEach(sub => {
+                sub.fields = sub.fields || [];
+                sub.fields.forEach(f => f._revealed = false);
+              });
             });
           }
         });
         state = Object.assign(defaultState(), data);
-        // إجبار التطبيق على العودة للرئيسية وتفريغ البحث دائماً عند التحميل من السحابة/التخزين
-        state.ui = { mode: 'home', viewedProject: null, viewedAccount: null };
+        state.ui = { mode: 'home', viewedProject: null, viewedAccount: null, viewedSubfolder: null };
         state.searchQuery = '';
       } else {
         state = defaultState();
@@ -146,7 +149,12 @@
                       p.accounts = p.accounts || [];
                       p.accounts.forEach(acc => {
                         acc.fields = acc.fields || [];
+                        acc.subfolders = acc.subfolders || [];
                         acc.fields.forEach(f => f._revealed = false);
+                        acc.subfolders.forEach(sub => {
+                          sub.fields = sub.fields || [];
+                          sub.fields.forEach(f => f._revealed = false);
+                        });
                       });
                     });
                     const currentActive = state.activeProjectId;
@@ -186,25 +194,34 @@
   };
   window.addEventListener('popstate', (e) => {
     if (Nav.depth > 0) Nav.popTop();
+    else if (state.ui.mode === 'subfolder') {
+      state.ui.mode = 'account'; state.ui.viewedSubfolder = null; renderAll();
+    }
     else if (state.ui.mode === 'account') {
-      state.ui = { mode: 'home', viewedProject: null, viewedAccount: null };
+      state.ui = { mode: 'home', viewedProject: null, viewedAccount: null, viewedSubfolder: null };
       renderAll();
     }
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (Nav.depth > 0) history.back();
-      else if (state.ui.mode === 'account') navigateHome();
+      else if (state.ui.mode === 'account' || state.ui.mode === 'subfolder') history.back();
     }
   });
 
   function navigateHome() {
-    if (state.ui.mode === 'account') history.back();
+    if (state.ui.mode === 'account' || state.ui.mode === 'subfolder') history.back();
   }
 
   function navigateToAccount(projId, accId) {
-    state.ui = { mode: 'account', viewedProject: projId, viewedAccount: accId };
+    state.ui = { mode: 'account', viewedProject: projId, viewedAccount: accId, viewedSubfolder: null };
     history.pushState({ view: 'account' }, '');
+    renderAll();
+  }
+
+  function navigateToSubfolder(projId, accId, subId) {
+    state.ui = { mode: 'subfolder', viewedProject: projId, viewedAccount: accId, viewedSubfolder: subId };
+    history.pushState({ view: 'subfolder' }, '');
     renderAll();
   }
 
@@ -356,16 +373,26 @@
 
   function renderAll() {
     if (state.ui.mode === 'home') {
-      renderTopbar(false); UI.searchWrap.style.display = 'block'; UI.tabsWrap.style.display = 'block';
+      renderTopbar('home'); UI.searchWrap.style.display = 'block'; UI.tabsWrap.style.display = 'block';
       renderTabs(); renderHomeContent(); UI.fab.classList.remove('hide');
-    } else {
-      renderTopbar(true); UI.searchWrap.style.display = 'none'; UI.tabsWrap.style.display = 'none';
+    } else if (state.ui.mode === 'account') {
+      renderTopbar('account'); UI.searchWrap.style.display = 'none'; UI.tabsWrap.style.display = 'none';
       renderAccountContent(); UI.fab.classList.remove('hide');
+    } else if (state.ui.mode === 'subfolder') {
+      renderTopbar('subfolder'); UI.searchWrap.style.display = 'none'; UI.tabsWrap.style.display = 'none';
+      renderSubfolderContent(); UI.fab.classList.remove('hide');
     }
   }
 
-  function renderTopbar(isAccount) {
-    if (isAccount) {
+  function renderTopbar(mode) {
+    if (mode === 'subfolder') {
+      const proj = state.projects.find(p => p.id === state.ui.viewedProject);
+      const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
+      const sub = acc?.subfolders?.find(s => s.id === state.ui.viewedSubfolder);
+      UI.btnBack.style.display = 'flex'; UI.brandMark.style.display = 'none';
+      UI.topTitle.textContent = sub ? sub.name : 'مجلد'; UI.topSub.textContent = acc ? acc.name : '';
+      UI.optionsBtn.style.display = 'none';
+    } else if (mode === 'account') {
       const proj = state.projects.find(p => p.id === state.ui.viewedProject);
       const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
       UI.btnBack.style.display = 'flex'; UI.brandMark.style.display = 'none';
@@ -374,7 +401,6 @@
     } else {
       UI.btnBack.style.display = 'none'; UI.brandMark.style.display = 'flex';
       UI.topTitle.textContent = 'VaultX';
-      // إضافة حماية || [] عند الحساب
       const accCount = state.projects.reduce((sum, p) => sum + (p.accounts || []).length, 0);
       UI.topSub.textContent = state.projects.length ? `${state.projects.length} مشاريع · ${accCount} حسابات` : 'لا مشاريع بعد';
       UI.optionsBtn.style.display = 'flex';
@@ -422,13 +448,13 @@
     targetProjects.forEach(proj => {
       // إضافة حماية || [] عند البحث وعرض الحسابات
       (proj.accounts || []).forEach(acc => {
-        const matched = matchQuery(query, proj.name, acc.name, ...(acc.fields || []).map(f => f.label + ' ' + f.value));
+        const matched = matchQuery(query, proj.name, acc.name, ...(acc.fields || []).map(f => f.label + ' ' + f.value), ...(acc.subfolders || []).flatMap(s => [s.name, ...(s.fields || []).map(f => f.label + ' ' + f.value)]));
         if (!matched) return;
         matchCount++;
-        const el = document.createElement('div'); el.className = 'acc-card';
-                const fCount = (acc.fields || []).length;
-        const shortName = acc.name.length > 35 ? acc.name.slice(0, 35) + '...' : acc.name;
-        const dateStr = new Date(acc.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+                  const el = document.createElement('div'); el.className = 'acc-card';
+          const fCount = (acc.fields || []).length;
+          const shortName = acc.name;
+          const dateStr = new Date(acc.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
         el.innerHTML = `
         <div class="acc-info">
           <div class="acc-ic">${ICON.folder}</div>
@@ -454,24 +480,37 @@
     const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
     if (!proj || !acc) { navigateHome(); return; }
 
-    // إضافة حماية || [] 
-    if (!acc.fields || acc.fields.length === 0) {
-      UI.content.innerHTML = `<div class="empty"><div class="empty-glyph">${ICON.vault}</div><h3>الحساب فارغ</h3><p>أضف بيانات مثل كلمة السر، مفتاح الـ API، أو الروابط.</p><button class="btn-primary" id="emptyAddField">${ICON.plus}<span>إضافة بيانات</span></button></div>`;
-      document.getElementById('emptyAddField').addEventListener('click', () => openAddFieldSheet(proj, acc));
+    if ((!acc.fields || acc.fields.length === 0) && (!acc.subfolders || acc.subfolders.length === 0)) {
+      UI.content.innerHTML = `<div class="empty"><div class="empty-glyph">${ICON.vault}</div><h3>الحساب فارغ</h3><p>أضف مجلداً جديداً أو بطاقة بيانات.</p></div>`;
       return;
     }
 
     const grid = document.createElement('div'); grid.className = 'cards-grid';
+
+    (acc.subfolders || []).forEach(sub => {
+      const el = document.createElement('div'); el.className = 'acc-card';
+      const fCount = (sub.fields || []).length;
+      const shortName = sub.name;
+      const dateStr = new Date(sub.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+      el.innerHTML = `
+      <div class="acc-info">
+        <div class="acc-ic" style="background:var(--surface-2);border-color:var(--accent-soft)">${ICON.folder}</div>
+        <div class="acc-text"><h3 dir="auto">${escapeHTML(shortName)}</h3><p>${fCount} بطاقة بيانات • <span style="font-family:var(--font-mono); font-size:10.5px;">${dateStr}</span></p></div>
+      </div>
+      <div class="acc-arrow">${ICON.chevronL}</div>`;
+      el.addEventListener('click', () => navigateToSubfolder(proj.id, acc.id, sub.id));
+      bindLongPress(el, (x, y) => openSubfolderContextMenu(proj, acc, sub, x, y));
+      grid.appendChild(el);
+    });
+
     (acc.fields || []).forEach(field => {
       const el = document.createElement('div'); el.className = 'card';
       const valWrap = document.createElement('div'); valWrap.className = 'card-value notranslate' + (field.sensitive ? '' : ' plain');
       valWrap.setAttribute('translate', 'no');
       valWrap.textContent = (field.sensitive && !field._revealed) ? maskValue(field.value) : (field.value || '—');
-
       const dateStr = new Date(field.updatedAt || field.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
       el.innerHTML = `<div class="card-top"><div class="card-label"><span class="tag-dot"></span>${escapeHTML(field.label)}</div><div style="display:flex; align-items:center; gap:8px;"><span style="font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono);">${dateStr}</span><button class="card-more" data-more aria-label="خيارات">${ICON.edit.replace('<svg','<svg style="width:15px;height:15px"')}</button></div></div>`;
       el.querySelector('.card-top').insertAdjacentElement('afterend', valWrap);
-
       const actions = document.createElement('div'); actions.className = 'card-actions';
       if (field.sensitive) {
         const eyeBtn = document.createElement('button'); eyeBtn.className = 'chip-btn';
@@ -488,11 +527,56 @@
         }
       });
       actions.appendChild(copyBtn); el.appendChild(actions);
-
       el.querySelector('[data-more]').addEventListener('click', (e) => {
-        const r = e.currentTarget.getBoundingClientRect(); openFieldContextMenu(proj, acc, field, r.left + r.width / 2, r.bottom + 6);
+        const r = e.currentTarget.getBoundingClientRect(); openFieldContextMenu(acc, field, r.left + r.width / 2, r.bottom + 6);
       });
-      bindLongPress(el, (x, y) => openFieldContextMenu(proj, acc, field, x, y));
+      bindLongPress(el, (x, y) => openFieldContextMenu(acc, field, x, y));
+      grid.appendChild(el);
+    });
+    UI.content.innerHTML = ''; UI.content.appendChild(grid);
+  }
+
+  function renderSubfolderContent() {
+    const proj = state.projects.find(p => p.id === state.ui.viewedProject);
+    const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
+    const sub = acc?.subfolders?.find(s => s.id === state.ui.viewedSubfolder);
+    if (!sub) { navigateHome(); return; }
+
+    if (!sub.fields || sub.fields.length === 0) {
+      UI.content.innerHTML = `<div class="empty"><div class="empty-glyph">${ICON.vault}</div><h3>المجلد فارغ</h3><p>أضف بيانات مثل المفاتيح والروابط داخل هذا المجلد.</p><button class="btn-primary" id="emptyAddSubField">${ICON.plus}<span>إضافة بيانات</span></button></div>`;
+      document.getElementById('emptyAddSubField').addEventListener('click', () => openAddFieldSheet(sub));
+      return;
+    }
+
+    const grid = document.createElement('div'); grid.className = 'cards-grid';
+    (sub.fields || []).forEach(field => {
+      const el = document.createElement('div'); el.className = 'card';
+      const valWrap = document.createElement('div'); valWrap.className = 'card-value notranslate' + (field.sensitive ? '' : ' plain');
+      valWrap.setAttribute('translate', 'no');
+      valWrap.textContent = (field.sensitive && !field._revealed) ? maskValue(field.value) : (field.value || '—');
+      const dateStr = new Date(field.updatedAt || field.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+      el.innerHTML = `<div class="card-top"><div class="card-label"><span class="tag-dot"></span>${escapeHTML(field.label)}</div><div style="display:flex; align-items:center; gap:8px;"><span style="font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono);">${dateStr}</span><button class="card-more" data-more aria-label="خيارات">${ICON.edit.replace('<svg','<svg style="width:15px;height:15px"')}</button></div></div>`;
+      el.querySelector('.card-top').insertAdjacentElement('afterend', valWrap);
+      const actions = document.createElement('div'); actions.className = 'card-actions';
+      if (field.sensitive) {
+        const eyeBtn = document.createElement('button'); eyeBtn.className = 'chip-btn';
+        eyeBtn.innerHTML = (field._revealed ? ICON.eyeOff : ICON.eye) + `<span>${field._revealed ? 'إخفاء' : 'إظهار'}</span>`;
+        eyeBtn.addEventListener('click', () => { field._revealed = !field._revealed; renderSubfolderContent(); });
+        actions.appendChild(eyeBtn);
+      }
+      const copyBtn = document.createElement('button'); copyBtn.className = 'chip-btn'; copyBtn.innerHTML = ICON.copy + '<span>نسخ</span>';
+      copyBtn.addEventListener('click', async () => {
+        if (await copyToClipboard(field.value)) {
+          copyBtn.classList.add('copied'); copyBtn.innerHTML = ICON.check + '<span>تم النسخ</span>';
+          toast('تم نسخ «' + field.label + '» ✓', 'success');
+          setTimeout(() => { copyBtn.className = 'chip-btn'; copyBtn.innerHTML = ICON.copy + '<span>نسخ</span>'; }, 1400);
+        }
+      });
+      actions.appendChild(copyBtn); el.appendChild(actions);
+      el.querySelector('[data-more]').addEventListener('click', (e) => {
+        const r = e.currentTarget.getBoundingClientRect(); openFieldContextMenu(sub, field, r.left + r.width / 2, r.bottom + 6);
+      });
+      bindLongPress(el, (x, y) => openFieldContextMenu(sub, field, x, y));
       grid.appendChild(el);
     });
     UI.content.innerHTML = ''; UI.content.appendChild(grid);
@@ -502,11 +586,25 @@
   UI.searchClear.addEventListener('click', () => { state.searchQuery = ''; UI.searchInput.value = ''; UI.searchClear.classList.remove('show'); UI.searchInput.focus(); renderHomeContent(); });
 
   UI.fab.addEventListener('click', () => {
-    if (state.ui.mode === 'home') { if (state.projects.length === 0) openAddProjectSheet(); else openAddAccountSheet(); }
-    else {
+    if (state.ui.mode === 'home') { 
+      if (state.projects.length === 0) openAddProjectSheet(); else openAddAccountSheet(); 
+    }
+    else if (state.ui.mode === 'account') {
       const proj = state.projects.find(p => p.id === state.ui.viewedProject);
       const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
-      if (proj && acc) openAddFieldSheet(proj, acc);
+      if (proj && acc) {
+        const r = UI.fab.getBoundingClientRect();
+        openContextMenu(r.left - 40, r.top - 50, [
+          { act: 'add_sub', label: 'مجلد فرعي', icon: ICON.folder, run: () => openAddSubfolderSheet(acc) },
+          { act: 'add_field', label: 'بيانات مباشرة', icon: ICON.plus, run: () => openAddFieldSheet(acc) }
+        ]);
+      }
+    }
+    else if (state.ui.mode === 'subfolder') {
+      const proj = state.projects.find(p => p.id === state.ui.viewedProject);
+      const acc = proj?.accounts.find(a => a.id === state.ui.viewedAccount);
+      const sub = acc?.subfolders?.find(s => s.id === state.ui.viewedSubfolder);
+      if (sub) openAddFieldSheet(sub);
     }
   });
 
@@ -584,7 +682,7 @@
           const targetProjId = showProjSelect ? selectedProjId : state.activeProjectId;
           const proj = state.projects.find(p => p.id === targetProjId); if (!proj) return;
           proj.accounts = proj.accounts || []; // حماية
-          proj.accounts.push({ id: uid(), name, createdAt: Date.now(), fields: [] });
+          proj.accounts.push({ id: uid(), name, createdAt: Date.now(), fields: [], subfolders: [] });
           persist(); close(); renderAll(); toast('تم إضافة الحساب ✓', 'success');
         }
       }
@@ -604,13 +702,49 @@
     });
   }
 
-  function confirmDeleteAccount(proj, acc) { openConfirm({ title: 'حذف الحساب؟', message: `سيتم حذف «${escapeHTML(acc.name)}» وجميع بطاقاته نهائيًا.`, confirmLabel: 'حذف', danger: true, onConfirm: () => { proj.accounts = proj.accounts.filter(x => x.id !== acc.id); persist(); renderAll(); toast('تم حذف الحساب', 'success'); } }); }
+  function confirmDeleteAccount(proj, acc) { openConfirm({ title: 'حذف الحساب؟', message: `سيتم حذف «${escapeHTML(acc.name)}» وجميع محتوياته نهائيًا.`, confirmLabel: 'حذف', danger: true, onConfirm: () => { proj.accounts = proj.accounts.filter(x => x.id !== acc.id); persist(); renderAll(); toast('تم حذف الحساب', 'success'); } }); }
   function openAccountContextMenu(proj, acc, x, y) { openContextMenu(x, y, [{ act: 'edit', label: 'تعديل', icon: ICON.edit, run: () => openEditAccountSheet(proj, acc) }, { sep: true }, { act: 'delete', label: 'حذف', icon: ICON.trash, danger: true, run: () => confirmDeleteAccount(proj, acc) }]); }
+
+  function openAddSubfolderSheet(acc) {
+    openSheet({
+      id: 'add-sub-' + uid(), title: 'مجلد جديد', subtitle: escapeHTML(acc.name),
+      bodyHTML: `<div class="field"><label>اسم المجلد</label><input type="text" id="sName" placeholder="مثال: Gemini Keys" maxlength="60" autocomplete="off" dir="auto"></div><div class="sheet-actions"><button class="btn btn-ghost" data-cancel>إلغاء</button><button class="btn btn-accent" id="sSave" disabled>إضافة</button></div>`,
+      onMount: (sheet, close) => {
+        const inp = sheet.querySelector('#sName'), save = sheet.querySelector('#sSave');
+        setTimeout(() => inp.focus(), 260);
+        inp.addEventListener('input', () => save.disabled = !inp.value.trim());
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter' && inp.value.trim()) doSave(); });
+        sheet.querySelector('[data-cancel]').addEventListener('click', close); save.addEventListener('click', doSave);
+        function doSave() {
+          const name = inp.value.trim(); if (!name) return;
+          acc.subfolders = acc.subfolders || [];
+          acc.subfolders.push({ id: uid(), name, createdAt: Date.now(), fields: [] });
+          persist(); close(); renderAll(); toast('تم إنشاء المجلد ✓', 'success');
+        }
+      }
+    });
+  }
+
+  function openEditSubfolderSheet(acc, sub) {
+    openSheet({
+      id: 'edit-sub-' + uid(), title: 'تعديل المجلد',
+      bodyHTML: `<div class="field"><label>الاسم</label><input type="text" id="sName" value="${escapeHTML(sub.name)}" maxlength="60" autocomplete="off" dir="auto"></div><div class="sheet-actions"><button class="btn btn-ghost" data-cancel>إلغاء</button><button class="btn btn-accent" id="sSave">حفظ</button></div>`,
+      onMount: (sheet, close) => {
+        const inp = sheet.querySelector('#sName'); setTimeout(() => { inp.focus(); inp.select(); }, 260);
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') doSave(); });
+        sheet.querySelector('[data-cancel]').addEventListener('click', close); sheet.querySelector('#sSave').addEventListener('click', doSave);
+        function doSave() { const name = inp.value.trim(); if (!name) return; sub.name = name; persist(); close(); renderAll(); toast('تم التعديل ✓', 'success'); }
+      }
+    });
+  }
+
+  function confirmDeleteSubfolder(acc, sub) { openConfirm({ title: 'حذف المجلد؟', message: `سيتم حذف المجلد ومحتوياته نهائياً.`, confirmLabel: 'حذف', danger: true, onConfirm: () => { acc.subfolders = acc.subfolders.filter(x => x.id !== sub.id); persist(); renderAll(); toast('تم حذف المجلد', 'success'); } }); }
+  function openSubfolderContextMenu(proj, acc, sub, x, y) { openContextMenu(x, y, [{ act: 'edit', label: 'تعديل المجلد', icon: ICON.edit, run: () => openEditSubfolderSheet(acc, sub) }, { sep: true }, { act: 'delete', label: 'حذف المجلد', icon: ICON.trash, danger: true, run: () => confirmDeleteSubfolder(acc, sub) }]); }
 
   function fieldFormHTML(ext) {
     return `<div class="field"><label>اسم البيانات</label><input type="text" id="fLabel" placeholder="مثال: API Key" value="${ext ? escapeHTML(ext.label) : ''}" maxlength="60" autocomplete="off" spellcheck="false" autocorrect="off" dir="auto"></div><div class="field"><label>القيمة</label><textarea id="fValue" placeholder="القيمة الكاملة..." spellcheck="false" autocorrect="off" autocapitalize="off" translate="no" class="notranslate" dir="auto">${ext ? escapeHTML(ext.value) : ''}</textarea></div><div class="switch-row"><div class="label-block"><strong>بيانات حساسة</strong><span>إخفاء القيمة تلقائيًا خلف نقاط</span></div><div class="switch ${(!ext || ext.sensitive) ? 'on' : ''}" id="fSens"><div class="knob"></div></div></div><div class="sheet-actions"><button class="btn btn-ghost" data-cancel>إلغاء</button><button class="btn btn-accent" id="fSave" ${ext ? '' : 'disabled'}>${ext ? 'حفظ' : 'إضافة'}</button></div>`;
   }
-  function wireFieldForm(sheet, close, proj, acc, ext) {
+  function wireFieldForm(sheet, close, container, ext) {
     const lInp = sheet.querySelector('#fLabel'), vInp = sheet.querySelector('#fValue'), sw = sheet.querySelector('#fSens'), save = sheet.querySelector('#fSave');
     let sens = ext ? ext.sensitive : true;
     setTimeout(() => lInp.focus(), 260);
@@ -622,17 +756,16 @@
       const label = lInp.value.trim(), value = vInp.value.trim(); if (!label || !value) return;
       if (ext) { ext.label = label; ext.value = value; ext.sensitive = sens; ext.updatedAt = Date.now(); }
       else {
-        acc.fields = acc.fields || []; // حماية
-        acc.fields.push({ id: uid(), label, value, sensitive: sens, createdAt: Date.now(), updatedAt: Date.now(), _revealed: false });
+        container.fields = container.fields || [];
+        container.fields.push({ id: uid(), label, value, sensitive: sens, createdAt: Date.now(), updatedAt: Date.now(), _revealed: false });
       }
       persist(); close(); renderAll(); toast(ext ? 'تم التعديل ✓' : 'تمت الإضافة ✓', 'success');
     });
   }
-  function openAddFieldSheet(proj, acc) { openSheet({ id: 'add-f-' + uid(), title: 'بيانات جديدة', subtitle: escapeHTML(acc.name), bodyHTML: fieldFormHTML(null), onMount: (s, c) => wireFieldForm(s, c, proj, acc, null) }); }
-  function openEditFieldSheet(proj, acc, f) { openSheet({ id: 'edit-f-' + uid(), title: 'تعديل البيانات', subtitle: escapeHTML(f.label), bodyHTML: fieldFormHTML(f), onMount: (s, c) => wireFieldForm(s, c, proj, acc, f) }); }
-  function confirmDeleteField(proj, acc, f) { openConfirm({ title: 'حذف البيانات؟', message: `سيتم حذف «${escapeHTML(f.label)}» نهائيًا.`, confirmLabel: 'حذف', danger: true, onConfirm: () => { acc.fields = acc.fields.filter(x => x.id !== f.id); persist(); renderAll(); toast('تم الحذف', 'success'); } }); }
-  function openFieldContextMenu(proj, acc, f, x, y) { openContextMenu(x, y, [{ act: 'copy', label: 'نسخ القيمة', icon: ICON.copy, run: async () => { if (await copyToClipboard(f.value)) toast('تم نسخ «' + f.label + '» ✓', 'success'); } }, { act: 'edit', label: 'تعديل', icon: ICON.edit, run: () => openEditFieldSheet(proj, acc, f) }, { sep: true }, { act: 'delete', label: 'حذف', icon: ICON.trash, danger: true, run: () => confirmDeleteField(proj, acc, f) }]); }
-
+  function openAddFieldSheet(container) { openSheet({ id: 'add-f-' + uid(), title: 'بيانات جديدة', subtitle: escapeHTML(container.name), bodyHTML: fieldFormHTML(null), onMount: (s, c) => wireFieldForm(s, c, container, null) }); }
+  function openEditFieldSheet(container, f) { openSheet({ id: 'edit-f-' + uid(), title: 'تعديل البيانات', subtitle: escapeHTML(f.label), bodyHTML: fieldFormHTML(f), onMount: (s, c) => wireFieldForm(s, c, container, f) }); }
+  function confirmDeleteField(container, f) { openConfirm({ title: 'حذف البيانات؟', message: `سيتم حذف «${escapeHTML(f.label)}» نهائيًا.`, confirmLabel: 'حذف', danger: true, onConfirm: () => { container.fields = container.fields.filter(x => x.id !== f.id); persist(); renderAll(); toast('تم الحذف', 'success'); } }); }
+  function openFieldContextMenu(container, f, x, y) { openContextMenu(x, y, [{ act: 'copy', label: 'نسخ القيمة', icon: ICON.copy, run: async () => { if (await copyToClipboard(f.value)) toast('تم نسخ «' + f.label + '» ✓', 'success'); } }, { act: 'edit', label: 'تعديل', icon: ICON.edit, run: () => openEditFieldSheet(container, f) }, { sep: true }, { act: 'delete', label: 'حذف', icon: ICON.trash, danger: true, run: () => confirmDeleteField(container, f) }]); }
   /* ============================================================
      OPTIONS & AUTH MENU
   ============================================================ */
@@ -693,8 +826,7 @@
 
   function exportJSON() {
     if (state.projects.length === 0) { toast('لا توجد بيانات', 'error'); return; }
-    // إضافة حماية المصفوفات عند التصدير
-    const data = { app: 'vault-manager', version: 2, exportedAt: new Date().toISOString(), projects: state.projects.map(p => ({ id: p.id, name: p.name, createdAt: p.createdAt, accounts: (p.accounts || []).map(a => ({ id: a.id, name: a.name, createdAt: a.createdAt, fields: (a.fields || []).map(f => ({ id: f.id, label: f.label, value: f.value, sensitive: f.sensitive, createdAt: f.createdAt, updatedAt: f.updatedAt })) })) })) };
+    const data = { app: 'vault-manager', version: 2, exportedAt: new Date().toISOString(), projects: state.projects.map(p => ({ id: p.id, name: p.name, createdAt: p.createdAt, accounts: (p.accounts || []).map(a => ({ id: a.id, name: a.name, createdAt: a.createdAt, subfolders: (a.subfolders || []).map(s => ({ id: s.id, name: s.name, createdAt: s.createdAt, fields: (s.fields || []).map(f => ({ id: f.id, label: f.label, value: f.value, sensitive: f.sensitive, createdAt: f.createdAt, updatedAt: f.updatedAt })) })), fields: (a.fields || []).map(f => ({ id: f.id, label: f.label, value: f.value, sensitive: f.sensitive, createdAt: f.createdAt, updatedAt: f.updatedAt })) })) })) };
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = `vault-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); toast('تم التصدير ✓', 'success');
@@ -709,8 +841,8 @@
         if (!parsed?.projects) throw new Error();
         const cleanProjects = parsed.projects.map(p => {
           let accounts = [];
-          if (p.accounts) accounts = p.accounts.map(a => ({ id: a.id || uid(), name: a.name, createdAt: a.createdAt || Date.now(), fields: (a.fields || []).map(f => ({ ...f, id: f.id || uid(), _revealed: false })) }));
-          else if (p.cards) accounts = [{ id: uid(), name: 'حسابات مستوردة', createdAt: Date.now(), fields: p.cards.map(f => ({ ...f, id: f.id || uid(), _revealed: false })) }];
+          if (p.accounts) accounts = p.accounts.map(a => ({ id: a.id || uid(), name: a.name, createdAt: a.createdAt || Date.now(), subfolders: (a.subfolders || []).map(s => ({ id: s.id || uid(), name: s.name, createdAt: s.createdAt || Date.now(), fields: (s.fields || []).map(f => ({ ...f, id: f.id || uid(), _revealed: false })) })), fields: (a.fields || []).map(f => ({ ...f, id: f.id || uid(), _revealed: false })) }));
+          else if (p.cards) accounts = [{ id: uid(), name: 'حسابات مستوردة', createdAt: Date.now(), subfolders: [], fields: p.cards.map(f => ({ ...f, id: f.id || uid(), _revealed: false })) }];
           return { id: p.id || uid(), name: p.name, createdAt: p.createdAt || Date.now(), accounts };
         });
         openConfirm({
